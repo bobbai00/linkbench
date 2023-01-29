@@ -63,6 +63,16 @@ public class Link {
     return properties;
   }
 
+  /**
+   * return true if given visibilityVal indicates visible
+   * @param visibilityVal
+   * @return
+   */
+  public static boolean checkVisibility(String visibilityVal) {
+    int visibility = Integer.getInteger(visibilityVal);
+    return visibility == LinkStore.VISIBILITY_DEFAULT;
+  }
+
   public String toString() {
     return String.format("Link(id1=%d, id2=%d, link_type=%d," +
         "visibility=%d, version=%d," +
@@ -72,7 +82,6 @@ public class Link {
 
   /**
    * Clone an existing link
-   * @param l
    */
   public Link clone() {
     Link l = new Link();
