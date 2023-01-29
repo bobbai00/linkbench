@@ -7,10 +7,12 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
@@ -40,6 +42,10 @@ public class LinkStoreJanusGraph extends GraphStore {
 
   int bulkInsertSize = DEFAULT_BULKINSERT_SIZE;
 
+  ReentrantLock lock = new ReentrantLock();
+  long nodeIdIncrementer = 0;
+
+
   private final Logger logger = Logger.getLogger(ConfigUtil.LINKBENCH_LOGGER);
 
   public LinkStoreJanusGraph() {
@@ -49,6 +55,25 @@ public class LinkStoreJanusGraph extends GraphStore {
   public LinkStoreJanusGraph(Properties props) throws IOException, Exception {
     super();
     initialize(props, Phase.LOAD, 0);
+  }
+
+  public long getNodeID() {
+    try {
+      lock.lock();
+      nodeIdIncrementer++;
+      return nodeIdIncrementer;
+    } finally {
+      lock.unlock();
+    }
+  }
+
+  public void resetNodeIDIncrementer(long startID) {
+    try {
+      lock.lock();
+      nodeIdIncrementer = startID;
+    } finally {
+      lock.unlock();
+    }
   }
 
   public String graphValueConverter(int val) {
@@ -413,6 +438,195 @@ public class LinkStoreJanusGraph extends GraphStore {
     // do nothing
   }
 
+  @Override
+  public void resetNodeStore(String dbid, long startID) throws Exception {
+    dropAllNodes();
+    resetNodeIDIncrementer(startID);
+  }
+
+
+  @Override
+  public long addNode(String dbid, Node node) throws Exception {
+    while (true) {
+      try {
+        return addNodeImpl(dbid, node);
+      } catch (Exception ex) {
+        throw ex;
+      }
+    }
+  }
+
+  @Override
+  public long[] bulkAddNodes(String dbid, List<Node> nodes) throws Exception {
+    while (true) {
+      try {
+        return bulkAddNodesImpl(dbid, nodes);
+      } catch (Exception ex) {
+        throw ex;
+      }
+    }
+  }
+
+  private long addNodeImpl(String dbid, Node node) throws Exception {
+    long ids[] = bulkAddNodes(dbid, Collections.singletonList(node));
+    assert(ids.length == 1);
+    return ids[0];
+  }
+
+  private long[] bulkAddNodesImpl(String dbid, List<Node> nodes) throws Exception {
+    return addNodesInGraph(nodes);
+  }
+
+  /**
+   * Graph Internal Operations: insert nodes in the graph
+   */
+  private long[] addNodesInGraph(List<Node> nodes) {
+    GraphTraversal gt = null;
+
+    long[] newNodeIDs = new long[nodes.size()];
+    for (int i = 0; i<nodes.size(); i++) {
+      Node node = nodes.get(i);
+
+      if (gt == null) {
+        gt = g.V();
+      } else {
+        gt.V();
+      }
+
+      if (gt == null) {
+        gt = g.addV(nodeLabel);
+      } else {
+        gt.addV(nodeLabel);
+      }
+
+      long nid = getNodeID();
+      newNodeIDs[i] = nid;
+
+      gt.property(Node.ID, nid);
+      gt.property(Node.TYPE, node.type);
+      gt.property(Node.VERSION, node.version);
+      gt.property(Node.TIME, node.time);
+      gt.property(Node.DATA, graphValueConverter(node.data));
+    }
+
+    gt.next();
+    g.tx().commit();
+    return newNodeIDs;
+  }
+
+  @Override
+  public Node getNode(String dbid, int type, long id) throws Exception {
+    while (true) {
+      try {
+        return getNodeImpl(dbid, type, id);
+      } catch (Exception ex) {
+        throw ex;
+      }
+    }
+  }
+
+  private Node getNodeImpl(String dbid, int type, long id) throws Exception {
+    Node res = getNodeInGraph(id);
+
+    if (res != null && res.type == type) {
+      return res;
+    }
+
+    return null;
+  }
+
+  @Override
+  public boolean updateNode(String dbid, Node node) throws Exception {
+    while (true) {
+      try {
+        return updateNodeImpl(dbid, node);
+      } catch (Exception ex) {
+        throw ex;
+      }
+    }
+  }
+
+  private boolean updateNodeImpl(String dbid, Node node) throws Exception {
+    return updateNodeInGraph(node.id, node);
+  }
+
+  @Override
+  public boolean deleteNode(String dbid, int type, long id) throws Exception {
+    while (true) {
+      try {
+        return deleteNodeImpl(dbid, type, id);
+      } catch (Exception ex) {
+        throw ex;
+      }
+    }
+  }
+
+  private boolean deleteNodeImpl(String dbid, int type, long id) throws Exception {
+    return deleteNodeInGraph(id, type);
+  }
+
+  /**
+   * Graph Internal Operations: update node by its given ID
+   */
+  private boolean deleteNodeInGraph(long id, int type) {
+    GraphTraversal gt = g.V().hasLabel(nodeLabel).has(Node.ID, id);
+    if (!gt.hasNext()) {
+      return false;
+    }
+
+    int nodeType = (int) gt.values(Node.TYPE).next();
+    if (nodeType != type) {
+      return false;
+    }
+    gt.drop().iterate();
+    g.tx().commit();
+    return true;
+  }
+
+  /**
+   * Graph Internal Operations: update node by its given ID
+   */
+  private boolean updateNodeInGraph(long id, Node newNode) {
+    GraphTraversal gt = g.V().hasLabel(nodeLabel).has(Node.ID, id);
+    if (!gt.hasNext()) {
+      return false;
+    }
+
+    gt.property(Node.VERSION, newNode.version);
+    gt.property(Node.TIME, newNode.time);
+    gt.property(Node.DATA, graphValueConverter(newNode.data));
+
+    gt.next();
+    g.tx().commit();
+    return true;
+  }
+
+
+  /**
+   * Graph Internal Operations: get node by its given ID
+   */
+  private Node getNodeInGraph(long id) {
+    GraphTraversal gt = g.V().hasLabel(nodeLabel).has(Node.ID, id);
+    if (!gt.hasNext()) {
+      return null;
+    }
+
+    int nodeType = (int) gt.values(Node.TYPE).next();
+    long nodeVersion = (long) gt.values(Node.VERSION).next();
+    int nodeTime = (int) gt.values(Node.TIME).next();
+    String nodeData = (String) gt.values(Node.DATA).next();
+
+    Node node = new Node(id, nodeType, nodeVersion, nodeTime, nodeData.getBytes());
+    return node;
+  }
+
+  /**
+   * Graph Internal Operations: drop all vertices
+   */
+  private void dropAllNodes() {
+    g.V().drop().iterate();
+  }
+
   /**
    * Graph Internal Operations: add/update links in the graph
    * @param links
@@ -514,5 +728,6 @@ public class LinkStoreJanusGraph extends GraphStore {
     gt.drop().iterate();
     g.tx().commit();
   }
+
 
 }
