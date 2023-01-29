@@ -24,18 +24,23 @@ import java.util.Arrays;
 public class Node {
   /** Unique identifier for node */
   public long id;
+  static public String ID = "id";
 
   /** Type of node */
   public int type;
+  static public String TYPE = "type";
 
   /** Version of node: typically updated on every change */
   public long version;
+  static public String VERSION = "version";
 
   /** Last update time of node as UNIX timestamp */
   public int time;
+  static public String TIME = "time";
 
   /** Arbitrary payload data */
   public byte data[];
+  static public String DATA = "data";
 
   public Node(long id, int type, long version, int time,
       byte data[]) {

@@ -16,6 +16,7 @@
 package com.facebook.LinkBench;
 
 import java.util.Arrays;
+import java.util.Properties;
 
 
 public class Link {
@@ -49,6 +50,19 @@ public class Link {
     }
   }
 
+  public Properties toProperties() {
+    Properties properties = new Properties();
+    properties.setProperty("id1", String.valueOf(id1));
+    properties.setProperty("id2", String.valueOf(id2));
+    properties.setProperty("link_type", String.valueOf(link_type));
+    properties.setProperty("visibility", String.valueOf(visibility));
+    properties.setProperty("version", String.valueOf(version));
+    properties.setProperty("time", String.valueOf(time));
+    properties.setProperty("data", data.toString());
+
+    return properties;
+  }
+
   public String toString() {
     return String.format("Link(id1=%d, id2=%d, link_type=%d," +
         "visibility=%d, version=%d," +
@@ -74,24 +88,31 @@ public class Link {
 
   /** The node id of the source of directed edge */
   public long id1;
+  static public String ID1 = "id1";
 
   /** The node id of the target of directed edge */
   public long id2;
+  static public String ID2 = "id2";
 
   /** Type of link */
   public long link_type;
+  static public String LINK_TYPE = "link_type";
 
   /** Visibility mode */
   public byte visibility;
+  static public String VISIBILITY = "visibility";
 
   /** Version of link */
   public int version;
+  static public String VERSION = "version";
 
   /** time is the sort key for links.  Often it contains a timestamp,
       but it can be used as a arbitrary user-defined sort key. */
   public long time;
+  static public String TIME = "time";
 
   /** Arbitrary payload data */
   public byte[] data;
+  static public String DATA = "data";
 
 }
