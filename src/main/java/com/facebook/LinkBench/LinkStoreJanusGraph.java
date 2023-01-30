@@ -19,6 +19,8 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.Edge;
+import org.janusgraph.core.JanusGraph;
+import org.janusgraph.core.JanusGraphFactory;
 
 import static org.apache.tinkerpop.gremlin.process.traversal.AnonymousTraversalSource.traversal;
 
@@ -50,6 +52,13 @@ public class LinkStoreJanusGraph extends GraphStore {
 
   public LinkStoreJanusGraph() {
     super();
+    // initialize with local graph
+    JanusGraph localGraph = JanusGraphFactory.build().
+            set("storage.backend", "berkeleyje").
+            set("storage.directory", "/home/bob/Desktop/shahram-lab/ebay/data/graph").
+            open();
+
+    g = localGraph.traversal();
   }
 
   public LinkStoreJanusGraph(Properties props) throws IOException, Exception {
@@ -147,6 +156,8 @@ public class LinkStoreJanusGraph extends GraphStore {
                          int threadId) throws IOException, Exception {
     // connect
     try {
+
+      graphConfigFilename = ConfigUtil.getPropertyRequired(props, CONFIG_FILENAME);
       openConnection();
     } catch (Exception e) {
       logger.error("error connecting to JanusGraph:", e);
