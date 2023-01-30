@@ -174,7 +174,6 @@ public class LinkStoreJanusGraph extends GraphStore {
   public void close() {
     try {
       g.close();
-      g.V().next();
     } catch (Exception e) {
       logger.error("Error while closing JanusGraph connection: ", e);
     }

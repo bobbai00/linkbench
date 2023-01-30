@@ -79,7 +79,7 @@ public class LinkStoreJanusGraphRunnable {
         try {
             GraphStore graphStore = new LinkStoreJanusGraph(props);
             testLinks(graphStore);
-
+            graphStore.close();
 
         } catch (Exception e) {
             throw new RuntimeException(e);
