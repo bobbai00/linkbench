@@ -11,6 +11,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.tinkerpop.gremlin.structure.util.reference.ReferenceEdge;
+import org.janusgraph.graphdb.relations.RelationIdentifier;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
@@ -196,6 +198,7 @@ public class LinkStoreJanusGraph extends GraphStore {
       try {
         return addLinkImpl(l, noinverse);
       } catch (Exception ex) {
+        throw ex;
 //        if (!processSQLException(ex, "addLink")) {
 //          throw ex;
 //        }
@@ -204,16 +207,16 @@ public class LinkStoreJanusGraph extends GraphStore {
   }
 
   private boolean addLinkImpl(Link l, boolean noinverse) throws Exception {
-    if (Level.DEBUG.isGreaterOrEqual(debuglevel)) {
-      logger.debug("addLink " + l.id1 +
-              "." + l.id2 +
-              "." + l.link_type);
-    }
+//    if (Level.DEBUG.isGreaterOrEqual(debuglevel)) {
+//      logger.debug("addLink " + l.id1 +
+//              "." + l.id2 +
+//              "." + l.link_type);
+//    }
 
     int numOfExistingLinks = addLinksInGraph(Collections.singletonList(l));
-    if (Level.TRACE.isGreaterOrEqual(debuglevel)) {
-      logger.trace("add/update link: " + l.toString());
-    }
+//    if (Level.TRACE.isGreaterOrEqual(debuglevel)) {
+//      logger.trace("add/update link: " + l.toString());
+//    }
 
     return numOfExistingLinks == 1;
   }
@@ -241,20 +244,26 @@ public class LinkStoreJanusGraph extends GraphStore {
 
     // check if link exists
     GraphTraversal gt = null;
-    gt = getGraphTraversalForLinkInGraph(id1, id2, link_type);
+    Edge e = getGraphTraversalForLinkInGraph(id1, id2, link_type);
 
-    boolean found = gt.hasNext();
+    boolean found = e != null;
     if (!found) {
       // do nothing
     } else {
+
+      RelationIdentifier rid = (RelationIdentifier) e.id();
+
+      gt = g.E().hasId(rid);
       // check its visibility
       String visibilityVal = (String) gt.values(Link.VISIBILITY).next();
       if (!Link.checkVisibility(visibilityVal) && !expunge) {
         // do nothing
       } else {
+        gt = g.E().hasId(rid);
         if (!expunge) {
           // update the edge, set it as invisible
           gt.property(Link.VISIBILITY, VISIBILITY_HIDDEN);
+          gt.next();
         } else {
           // delete the edge
           gt.drop().iterate();
@@ -423,10 +432,9 @@ public class LinkStoreJanusGraph extends GraphStore {
 
   private void addBulkLinksImpl(String dbid, List<Link> links, boolean noinverse)
           throws Exception {
-    if (Level.TRACE.isGreaterOrEqual(debuglevel)) {
-      logger.trace("addBulkLinks: " + links.size() + " links");
-    }
-
+//    if (Level.TRACE.isGreaterOrEqual(debuglevel)) {
+//      logger.trace("addBulkLinks: " + links.size() + " links");
+//    }
     addLinksInGraph(links);
   }
 
@@ -672,7 +680,7 @@ public class LinkStoreJanusGraph extends GraphStore {
     if (links.size() == 0) {
       return numOfExistingLink;
     }
-    GraphTraversal gt = null;
+    List<GraphTraversal> gtArr = new ArrayList<>();
 
     for (int i = 0; i<links.size(); i++) {
       Link l = links.get(i);
@@ -680,24 +688,29 @@ public class LinkStoreJanusGraph extends GraphStore {
       long id1 = l.id1;
       long id2 = l.id2;
 
-      gt = getGraphTraversalForLinkInGraph(l.id1, l.id2, l.link_type);
+      Edge e = getGraphTraversalForLinkInGraph(l.id1, l.id2, l.link_type);
 
-      if (gt.hasNext()) {
+      GraphTraversal gt = null;
+      if (e != null) {
         // the link exists, update properties
+        RelationIdentifier rid = (RelationIdentifier) e.id();
+
+//        gt = g.V(rid.getOutVertexId()).outE(linkLabel).where(__.hasId(rid.getInVertexId()));
+        gt = g.E().hasId(rid);
         gt.property(Link.TIME, l.time);
         gt.property(Link.VERSION, l.version);
         gt.property(Link.DATA, graphValueConverter(l.data));
 
+        gtArr.add(gt);
         numOfExistingLink++;
       } else {
-        gt.V();
+        gt = g.V().has(Node.ID, id1);
         // find source
-        gt.hasLabel(nodeLabel).has(Node.ID, id1);
-        String stepLabel1 = "id1_"+i;
-        gt.as("id1_"+i);
+        String stepLabel1 = "id1"+ i;
+        gt.as(stepLabel1);
 
-        gt.hasLabel(nodeLabel).has(Node.ID, id2);
-        String stepLabel2 = "id2_"+i;
+        gt.V().has(Node.ID, id2);
+        String stepLabel2 = "id2"+i;
         gt.as(stepLabel2);
 
         gt.addE(linkLabel);
@@ -705,14 +718,19 @@ public class LinkStoreJanusGraph extends GraphStore {
         gt.property(Link.ID2, id2);
         gt.property(Link.LINK_TYPE, l.link_type);
         gt.property(Link.VISIBILITY, l.visibility);
-        gt.property(Link.DATA, l.data);
+        gt.property(Link.DATA, graphValueConverter(l.data));
         gt.property(Link.VERSION, l.version);
         gt.property(Link.TIME, l.time);
 
         gt.from(stepLabel1).to(stepLabel2);
+
+        gtArr.add(gt);
       }
     }
-    gt.next();
+
+    for (GraphTraversal gt : gtArr) {
+      gt.next();
+    }
     g.tx().commit();
 
     return numOfExistingLink;
@@ -721,13 +739,14 @@ public class LinkStoreJanusGraph extends GraphStore {
   /**
    * Graph Internal Operations: check if given link exists in the graph
    */
-  private GraphTraversal getGraphTraversalForLinkInGraph(long id1, long id2, long link_type) {
+  private Edge getGraphTraversalForLinkInGraph(long id1, long id2, long link_type) {
     GraphTraversal gt = null;
 
     gt = g.V().has(Node.ID, id1)
             .outE(linkLabel).has(Link.LINK_TYPE, graphValueConverter(link_type))
             .where(__.inV().hasLabel(nodeLabel).has(Node.ID, id2));
-    return gt;
+    Optional<Edge> e = gt.tryNext();
+    return e.orElse(null);
   }
 
   /**
@@ -754,15 +773,5 @@ public class LinkStoreJanusGraph extends GraphStore {
             .outE(linkLabel).has(Link.LINK_TYPE, graphValueConverter(link_type));
     return gt;
   }
-
-  /**
-   * Graph Internal Operations: remove the given link
-   */
-  private void removeLinkFromGraph(long id1, long id2, long link_type) {
-    GraphTraversal gt = getGraphTraversalForLinkInGraph(id1, id2, link_type);
-    gt.drop().iterate();
-    g.tx().commit();
-  }
-
 
 }

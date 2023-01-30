@@ -14,9 +14,14 @@ public class LinkStoreJanusGraphRunnable {
 
 
     public static void testAddNodes(GraphStore graphStore) throws Exception {
-        List<Node> nodeList = new ArrayList<>();
         String data = "123456";
         String dbID = "1";
+
+        graphStore.resetNodeStore(dbID, 1);
+
+
+        List<Node> nodeList = new ArrayList<>();
+
         nodeList.add(new Node(1, 1, 1, System.currentTimeMillis(), data.getBytes()));
         nodeList.add(new Node(2, 2, 1, System.currentTimeMillis(), data.getBytes()));
         nodeList.add(new Node(3, 3, 1, System.currentTimeMillis(), data.getBytes()));
@@ -38,6 +43,31 @@ public class LinkStoreJanusGraphRunnable {
     }
 
     public static void testLinks(GraphStore graphStore) throws Exception {
+        String data = "123456";
+        String dbID = "1";
+
+        graphStore.resetNodeStore(dbID, 1);
+
+        List<Node> nodeList = new ArrayList<>();
+
+        nodeList.add(new Node(1, 1, 1, System.currentTimeMillis(), data.getBytes()));
+        nodeList.add(new Node(2, 2, 1, System.currentTimeMillis(), data.getBytes()));
+        nodeList.add(new Node(3, 3, 1, System.currentTimeMillis(), data.getBytes()));
+
+        long[] ids = graphStore.bulkAddNodes(dbID, nodeList);
+
+        // add two new links
+        List<Link> linkList = new ArrayList<>();
+        linkList.add(new Link(1L, 1L, 3L, (byte) 1, data.getBytes(), 1, System.currentTimeMillis()));
+        linkList.add(new Link(2L, 1L, 3L, (byte) 1, data.getBytes(), 1, System.currentTimeMillis()));
+
+        graphStore.addBulkLinks(dbID, linkList, false);
+
+        // modify existing links
+        boolean isUpdateSucceed = graphStore.addLink(dbID, new Link(1L, 1L, 3L, (byte) 0, data.getBytes(), 10000, System.currentTimeMillis()), false);
+
+
+        graphStore.resetNodeStore(dbID, 1);
 
     }
 
@@ -48,7 +78,7 @@ public class LinkStoreJanusGraphRunnable {
 
         try {
             GraphStore graphStore = new LinkStoreJanusGraph(props);
-            testAddNodes(graphStore);
+            testLinks(graphStore);
 
 
         } catch (Exception e) {
