@@ -35,14 +35,14 @@ public class Node {
   static public String VERSION = "version";
 
   /** Last update time of node as UNIX timestamp */
-  public int time;
+  public long time;
   static public String TIME = "time";
 
   /** Arbitrary payload data */
   public byte data[];
   static public String DATA = "data";
 
-  public Node(long id, int type, long version, int time,
+  public Node(long id, int type, long version, long time,
       byte data[]) {
     super();
     this.id = id;

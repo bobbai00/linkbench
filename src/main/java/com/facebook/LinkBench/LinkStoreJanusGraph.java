@@ -1,5 +1,6 @@
 package com.facebook.LinkBench;
 
+import jnr.ffi.annotations.In;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
@@ -7,11 +8,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.Collections;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.tinkerpop.gremlin.process.traversal.P;
@@ -19,6 +16,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.Edge;
+import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 
@@ -45,7 +43,7 @@ public class LinkStoreJanusGraph extends GraphStore {
   int bulkInsertSize = DEFAULT_BULKINSERT_SIZE;
 
   ReentrantLock lock = new ReentrantLock();
-  long nodeIdIncrementer = 0;
+  long nodeIdIncrementer = 1;
 
 
   private final Logger logger = Logger.getLogger(ConfigUtil.LINKBENCH_LOGGER);
@@ -69,8 +67,9 @@ public class LinkStoreJanusGraph extends GraphStore {
   public long getNodeID() {
     try {
       lock.lock();
+      long res = nodeIdIncrementer;
       nodeIdIncrementer++;
-      return nodeIdIncrementer;
+      return res;
     } finally {
       lock.unlock();
     }
@@ -498,11 +497,6 @@ public class LinkStoreJanusGraph extends GraphStore {
     for (int i = 0; i<nodes.size(); i++) {
       Node node = nodes.get(i);
 
-      if (gt == null) {
-        gt = g.V();
-      } else {
-        gt.V();
-      }
 
       if (gt == null) {
         gt = g.addV(nodeLabel);
@@ -576,20 +570,43 @@ public class LinkStoreJanusGraph extends GraphStore {
     return deleteNodeInGraph(id, type);
   }
 
+  public class GraphNode {
+    public boolean isGraphNodeExists = false;
+    public long graphNodeID;
+
+    public GraphNode(boolean isExists, long gid) {
+      isGraphNodeExists = isExists;
+      graphNodeID = gid;
+    }
+  }
+
+  /**
+   * Graph Internal Operations: get actual node id in graph by its given ID
+   */
+  private Vertex getGraphVertexInGraph(long id) {
+    Optional<Vertex> gt = g.V().hasLabel(nodeLabel).has(Node.ID, id).tryNext();
+    return gt.orElse(null);
+  }
+
   /**
    * Graph Internal Operations: update node by its given ID
    */
   private boolean deleteNodeInGraph(long id, int type) {
-    GraphTraversal gt = g.V().hasLabel(nodeLabel).has(Node.ID, id);
-    if (!gt.hasNext()) {
+    Vertex vtx = getGraphVertexInGraph(id);
+    if (vtx == null) {
       return false;
     }
 
-    int nodeType = (int) gt.values(Node.TYPE).next();
+    long graphNodeID = (long) vtx.id();
+    Map<Object, Object> nodeValMap = g.V(graphNodeID).valueMap().next();
+    ArrayList<Integer> nodeTypeArr = (ArrayList<Integer>) nodeValMap.get(Node.TYPE);
+
+    int nodeType = nodeTypeArr.get(0);
     if (nodeType != type) {
       return false;
     }
-    gt.drop().iterate();
+
+    g.V(graphNodeID).drop().iterate();
     g.tx().commit();
     return true;
   }
@@ -598,10 +615,13 @@ public class LinkStoreJanusGraph extends GraphStore {
    * Graph Internal Operations: update node by its given ID
    */
   private boolean updateNodeInGraph(long id, Node newNode) {
-    GraphTraversal gt = g.V().hasLabel(nodeLabel).has(Node.ID, id);
-    if (!gt.hasNext()) {
+    Vertex vtx = getGraphVertexInGraph(id);
+    if (vtx == null) {
       return false;
     }
+
+    long graphNodeID = (long) vtx.id();
+    GraphTraversal gt = g.V(graphNodeID);
 
     gt.property(Node.VERSION, newNode.version);
     gt.property(Node.TIME, newNode.time);
@@ -617,17 +637,20 @@ public class LinkStoreJanusGraph extends GraphStore {
    * Graph Internal Operations: get node by its given ID
    */
   private Node getNodeInGraph(long id) {
-    GraphTraversal gt = g.V().hasLabel(nodeLabel).has(Node.ID, id);
-    if (!gt.hasNext()) {
+    Vertex vtx = getGraphVertexInGraph(id);
+    if (vtx == null) {
       return null;
     }
 
-    int nodeType = (int) gt.values(Node.TYPE).next();
-    long nodeVersion = (long) gt.values(Node.VERSION).next();
-    int nodeTime = (int) gt.values(Node.TIME).next();
-    String nodeData = (String) gt.values(Node.DATA).next();
+    long graphNodeID = (long) vtx.id();
+    Map<Object, Object> nodeValMap = g.V(graphNodeID).valueMap().next();
 
-    Node node = new Node(id, nodeType, nodeVersion, nodeTime, nodeData.getBytes());
+    ArrayList<Integer> nodeType = (ArrayList<Integer>) nodeValMap.get(Node.TYPE);
+    ArrayList<Long> nodeVersion = (ArrayList<Long>) nodeValMap.get(Node.VERSION);
+    ArrayList<Long> nodeTime = (ArrayList<Long>) nodeValMap.get(Node.TIME);
+    ArrayList<String> nodeData = (ArrayList<String>) nodeValMap.get(Node.DATA);
+
+    Node node = new Node(id, nodeType.get(0), nodeVersion.get(0), nodeTime.get(0), nodeData.get(0).getBytes());
     return node;
   }
 
@@ -636,6 +659,7 @@ public class LinkStoreJanusGraph extends GraphStore {
    */
   private void dropAllNodes() {
     g.V().drop().iterate();
+    g.tx().commit();
   }
 
   /**
