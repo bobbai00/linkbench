@@ -235,11 +235,11 @@ public class LinkStoreJanusGraph extends GraphStore {
 
   private boolean deleteLinkImpl(String dbid, long id1, long link_type, long id2,
       boolean noinverse, boolean expunge) throws Exception {
-    if (Level.DEBUG.isGreaterOrEqual(debuglevel)) {
-      logger.debug("deleteLink " + id1 +
-              "." + id2 +
-              "." + link_type);
-    }
+//    if (Level.DEBUG.isGreaterOrEqual(debuglevel)) {
+//      logger.debug("deleteLink " + id1 +
+//              "." + id2 +
+//              "." + link_type);
+//    }
 
     // check if link exists
     GraphTraversal gt = null;
@@ -254,8 +254,8 @@ public class LinkStoreJanusGraph extends GraphStore {
 
       gt = g.E().hasId(rid);
       // check its visibility
-      String visibilityVal = (String) gt.values(Link.VISIBILITY).next();
-      if (!Link.checkVisibility(visibilityVal) && !expunge) {
+      byte visibilityVal = (byte) gt.values(Link.VISIBILITY).next();
+      if (visibilityVal != VISIBILITY_DEFAULT && !expunge) {
         // do nothing
       } else {
         gt = g.E().hasId(rid);

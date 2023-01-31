@@ -66,22 +66,26 @@ public class LinkStoreJanusGraphRunnable {
         // modify existing links
         boolean isUpdateSucceed = graphStore.addLink(dbID, new Link(1L, 1L, 3L, (byte) 0, data.getBytes(), 10000, System.currentTimeMillis()), false);
 
+        // delete link
+        boolean isDeleteSucceed = graphStore.deleteLink(dbID, 2, 1, 3, false, true);
 
         graphStore.resetNodeStore(dbID, 1);
 
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         Properties props = new Properties();
         props.setProperty("graphConfigFilename", "config/remote-graph.properties");
 
-
+        GraphStore graphStore = null;
         try {
-            GraphStore graphStore = new LinkStoreJanusGraph(props);
+            graphStore = new LinkStoreJanusGraph(props);
             testLinks(graphStore);
             graphStore.close();
 
         } catch (Exception e) {
+            graphStore.resetNodeStore("1", 1);
+            graphStore.close();
             throw new RuntimeException(e);
         }
 
