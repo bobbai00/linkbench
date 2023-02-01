@@ -1,6 +1,5 @@
 package com.facebook.LinkBench;
 
-import jnr.ffi.annotations.In;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
@@ -11,7 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
-import org.apache.tinkerpop.gremlin.structure.util.reference.ReferenceEdge;
+import org.apache.zookeeper.Op;
 import org.janusgraph.graphdb.relations.RelationIdentifier;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
@@ -243,7 +242,7 @@ public class LinkStoreJanusGraph extends GraphStore {
 
     // check if link exists
     GraphTraversal gt = null;
-    Edge e = getGraphTraversalForLinkInGraph(id1, id2, link_type);
+    Edge e = getSingleEdgeInGraph(id1, id2, link_type);
 
     boolean found = e != null;
     if (!found) {
@@ -315,22 +314,17 @@ public class LinkStoreJanusGraph extends GraphStore {
 
   private Link[] multigetLinksImpl(String dbid, long id1, long link_type,
                                    long[] id2s) throws Exception {
-    GraphTraversal gt = getGraphTraversalForLinksFromGivenSourceDst(id1, id2s, link_type);
-    List<Edge> results = gt.toList();
+    List<Edge> results = getEdgesInGraph(id1, id2s, link_type);
 
     Link[] links = new Link[results.size()];
+    GraphTraversal gt;
     for (int i = 0; i<results.size(); i++) {
       // construct Links;
       Edge e = results.get(i);
-      long e_id1 = (long) e.values(Link.ID1).next();
-      long e_id2 = (long) e.values(Link.ID2).next();
-      byte e_visibility = (byte) e.values(Link.VISIBILITY).next();
-      long e_link_type = (long) e.values(Link.LINK_TYPE).next();
-      int e_version = (int) e.values(Link.VERSION).next();
-      long e_time = (long) e.values(Link.TIME).next();
-      String e_data = (String) e.values(Link.DATA).next();
+      RelationIdentifier rid = (RelationIdentifier) e.id();
 
-      Link l = new Link(e_id1, e_link_type, e_id2, e_visibility, e_data.getBytes(), e_version, e_time);
+      Map<Object, Object> edgeValueMap = g.E().hasId(rid).valueMap().next();
+      Link l = constructLinkFromGraphValueMap(edgeValueMap);
       links[i] = l;
     }
 
@@ -389,6 +383,19 @@ public class LinkStoreJanusGraph extends GraphStore {
     }
 
     return links;
+  }
+
+  private Link constructLinkFromGraphValueMap(Map<Object, Object> edgeValueMap) {
+
+    Long id1 = (Long) edgeValueMap.get(Link.ID1);
+    Long id2 = (Long) edgeValueMap.get(Link.ID2);
+    Long linkType = (Long) edgeValueMap.get(Link.LINK_TYPE);
+    Byte visibility = (Byte) edgeValueMap.get(Link.VISIBILITY);
+    String data = (String) edgeValueMap.get(Link.DATA);
+    Long version = (Long) edgeValueMap.get(Link.VERSION);
+    Long time = (Long) edgeValueMap.get(Link.TIME);
+
+    return new Link(id1, linkType, id2, visibility, data.getBytes(), Math.toIntExact(version), time);
   }
 
   @Override
@@ -687,7 +694,7 @@ public class LinkStoreJanusGraph extends GraphStore {
       long id1 = l.id1;
       long id2 = l.id2;
 
-      Edge e = getGraphTraversalForLinkInGraph(l.id1, l.id2, l.link_type);
+      Edge e = getSingleEdgeInGraph(l.id1, l.id2, l.link_type);
 
       GraphTraversal gt = null;
       if (e != null) {
@@ -738,11 +745,11 @@ public class LinkStoreJanusGraph extends GraphStore {
   /**
    * Graph Internal Operations: check if given link exists in the graph
    */
-  private Edge getGraphTraversalForLinkInGraph(long id1, long id2, long link_type) {
+  private Edge getSingleEdgeInGraph(long id1, long id2, long link_type) {
     GraphTraversal gt = null;
 
     gt = g.V().has(Node.ID, id1)
-            .outE(linkLabel).has(Link.LINK_TYPE, graphValueConverter(link_type))
+            .outE(linkLabel).has(Link.LINK_TYPE, link_type)
             .where(__.inV().hasLabel(nodeLabel).has(Node.ID, id2));
     Optional<Edge> e = gt.tryNext();
     return e.orElse(null);
@@ -751,14 +758,29 @@ public class LinkStoreJanusGraph extends GraphStore {
   /**
    * Graph Internal Operations: check if given link exists in the graph
    */
-  private GraphTraversal getGraphTraversalForLinksFromGivenSourceDst(long id1, long[] id2, long link_type) {
+  private List<Edge> getEdgesInGraph(long id1, long[] id2, long link_type) {
 
+    List<Edge> edges = new ArrayList<>();
     GraphTraversal gt = null;
 
+    List<Long> id2Arr = new ArrayList<>();
+    for (int i = 0; i<id2.length; i++) {
+      id2Arr.add(id2[i]);
+    }
+
     gt = g.V().has(Node.ID, id1)
-            .outE(linkLabel).has(Link.LINK_TYPE, graphValueConverter(link_type))
-            .where(__.inV().hasLabel(nodeLabel).has(Node.ID, P.within(id2)));
-    return gt;
+            .outE(linkLabel).has(Link.LINK_TYPE, link_type)
+            .where(__.inV().hasLabel(nodeLabel).has(Node.ID, P.within(id2Arr)));
+
+    while (true) {
+      Optional<Edge> e = gt.tryNext();
+      if (e.isPresent()) {
+        edges.add(e.get());
+      } else {
+        break;
+      }
+    }
+    return edges;
   }
 
   /**

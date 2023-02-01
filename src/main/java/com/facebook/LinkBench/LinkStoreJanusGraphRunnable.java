@@ -60,15 +60,19 @@ public class LinkStoreJanusGraphRunnable {
         List<Link> linkList = new ArrayList<>();
         linkList.add(new Link(1L, 1L, 3L, (byte) 1, data.getBytes(), 1, System.currentTimeMillis()));
         linkList.add(new Link(2L, 1L, 3L, (byte) 1, data.getBytes(), 1, System.currentTimeMillis()));
-
+        linkList.add(new Link(1L, 1L, 2L, (byte) 1, data.getBytes(), 100,
+            System.currentTimeMillis()));
         graphStore.addBulkLinks(dbID, linkList, false);
 
         // modify existing links
-        boolean isUpdateSucceed = graphStore.addLink(dbID, new Link(1L, 1L, 3L, (byte) 0, data.getBytes(), 10000, System.currentTimeMillis()), false);
+        boolean isUpdateSucceed = graphStore.addLink(dbID, new Link(1L, 1L, 3L, (byte) 1,
+            data.getBytes(), 10000, System.currentTimeMillis()), false);
 
         // delete link
-        boolean isDeleteSucceed = graphStore.deleteLink(dbID, 2, 1, 3, false, true);
+        boolean isDeleteSucceed = graphStore.deleteLink(dbID, 2, 1, 3, false, false);
 
+        // multiget link
+        Link[] links = graphStore.multigetLinks(dbID, 1, 1, new long[]{2, 3});
         graphStore.resetNodeStore(dbID, 1);
 
     }
