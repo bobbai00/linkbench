@@ -10,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
-import org.apache.zookeeper.Op;
 import org.janusgraph.graphdb.relations.RelationIdentifier;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
@@ -22,6 +21,7 @@ import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 
 import static org.apache.tinkerpop.gremlin.process.traversal.AnonymousTraversalSource.traversal;
+import static org.apache.tinkerpop.gremlin.process.traversal.Order.desc;
 
 public class LinkStoreJanusGraph extends GraphStore {
 
@@ -83,19 +83,6 @@ public class LinkStoreJanusGraph extends GraphStore {
     } finally {
       lock.unlock();
     }
-  }
-
-  public String graphValueConverter(int val) {
-    return String.valueOf(val);
-  }
-
-
-  public String graphValueConverter(long val) {
-    return String.valueOf(val);
-  }
-
-  public String graphValueConverter(byte val) {
-    return String.valueOf(val);
   }
 
   private String hexStringLiteral(byte[] arr) {
@@ -356,29 +343,18 @@ public class LinkStoreJanusGraph extends GraphStore {
   private Link[] getLinkListImpl(String dbid, long id1, long link_type,
                                  long minTimestamp, long maxTimestamp,
                                  int offset, int limit) {
-    GraphTraversal gt = getGraphTraversalForLinksFromGivenSource(id1, link_type);
-    List<Edge> results = gt.toList();
+    List<Edge> results = getEdgesInGraphBySourceIDInTimeOrder(id1, link_type, minTimestamp,
+        maxTimestamp, offset, limit);
 
-    int startIndex = offset;
-    int endIndex = Integer.min(offset + limit, results.size()) ;
-    if (startIndex >= endIndex) {
-      return null;
-    }
+    Link[] links = new Link[results.size()];
 
-    Link[] links = new Link[endIndex - startIndex];
-
-    for (int i = startIndex; i < endIndex; i++) {
+    for (int i = 0; i < links.length; i++) {
       // construct Links;
       Edge e = results.get(i);
-      long e_id1 = (long) e.values(Link.ID1).next();
-      long e_id2 = (long) e.values(Link.ID2).next();
-      byte e_visibility = (byte) e.values(Link.VISIBILITY).next();
-      long e_link_type = (long) e.values(Link.LINK_TYPE).next();
-      int e_version = (int) e.values(Link.VERSION).next();
-      long e_time = (long) e.values(Link.TIME).next();
-      String e_data = (String) e.values(Link.DATA).next();
+      RelationIdentifier rid = (RelationIdentifier) e.id();
 
-      Link l = new Link(e_id1, e_link_type, e_id2, e_visibility, e_data.getBytes(), e_version, e_time);
+      Map<Object, Object> edgeValueMap = g.E().hasId(rid).valueMap().next();
+      Link l = constructLinkFromGraphValueMap(edgeValueMap);
       links[i] = l;
     }
 
@@ -412,9 +388,9 @@ public class LinkStoreJanusGraph extends GraphStore {
 
   private long countLinksImpl(String dbid, long id1, long link_type)
           throws Exception {
-    GraphTraversal gt = getGraphTraversalForLinksFromGivenSource(id1, link_type);
+    List<Edge> gt = getEdgesInGraphBySourceIDInTimeOrder(id1, link_type);
     // only count those that are visible
-    long count = (long) gt.has(Link.VISIBILITY, VISIBILITY_DEFAULT).count().next();
+    long count = gt.size();
     return count;
   }
 
@@ -703,9 +679,10 @@ public class LinkStoreJanusGraph extends GraphStore {
 
 //        gt = g.V(rid.getOutVertexId()).outE(linkLabel).where(__.hasId(rid.getInVertexId()));
         gt = g.E().hasId(rid);
+        gt.property(Link.VISIBILITY, l.visibility);
         gt.property(Link.TIME, l.time);
         gt.property(Link.VERSION, l.version);
-        gt.property(Link.DATA, graphValueConverter(l.data));
+        gt.property(Link.DATA, String.valueOf(l.data));
 
         gtArr.add(gt);
         numOfExistingLink++;
@@ -786,13 +763,49 @@ public class LinkStoreJanusGraph extends GraphStore {
   /**
    * Graph Internal Operations: check if given link exists in the graph
    */
-  private GraphTraversal getGraphTraversalForLinksFromGivenSource(long id1, long link_type) {
+  private List<Edge> getEdgesInGraphBySourceIDInTimeOrder(long id1, long link_type,
+                                                          long minTimeStamp, long maxTimeStamp, int offset, int limit) {
 
+    List<Edge> edges = new ArrayList<>();
     GraphTraversal gt = null;
 
     gt = g.V().has(Node.ID, id1)
-            .outE(linkLabel).has(Link.LINK_TYPE, graphValueConverter(link_type));
-    return gt;
+            .outE(linkLabel)
+            .has(Link.VISIBILITY, VISIBILITY_DEFAULT)
+            .has(Link.LINK_TYPE, link_type).has(Link.TIME, P.gte(minTimeStamp))
+            .has(Link.TIME, P.lte(maxTimeStamp)).order().by(Link.TIME, desc).range(offset,
+            offset + limit);
+
+    while (true) {
+      Optional<Edge> e = gt.tryNext();
+      if (e.isPresent()) {
+        edges.add(e.get());
+      } else {
+        break;
+      }
+    }
+    return edges;
+  }
+
+  private List<Edge> getEdgesInGraphBySourceIDInTimeOrder(long id1, long link_type) {
+
+    List<Edge> edges = new ArrayList<>();
+    GraphTraversal gt = null;
+
+    gt = g.V().has(Node.ID, id1)
+        .outE(linkLabel)
+        .has(Link.VISIBILITY, VISIBILITY_DEFAULT)
+        .has(Link.LINK_TYPE, link_type);
+
+    while (true) {
+      Optional<Edge> e = gt.tryNext();
+      if (e.isPresent()) {
+        edges.add(e.get());
+      } else {
+        break;
+      }
+    }
+    return edges;
   }
 
 }
