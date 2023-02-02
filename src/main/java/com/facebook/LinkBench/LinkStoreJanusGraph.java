@@ -10,6 +10,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.tinkerpop.gremlin.driver.Cluster;
+import org.apache.tinkerpop.gremlin.driver.MessageSerializer;
+import org.apache.tinkerpop.gremlin.driver.remote.DriverRemoteConnection;
+import org.apache.tinkerpop.gremlin.driver.ser.GraphBinaryMessageSerializerV1;
+import org.apache.tinkerpop.gremlin.driver.ser.Serializers;
 import org.janusgraph.graphdb.relations.RelationIdentifier;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
@@ -52,12 +57,12 @@ public class LinkStoreJanusGraph extends GraphStore {
   public LinkStoreJanusGraph() {
     super();
     // initialize with local graph
-    JanusGraph localGraph = JanusGraphFactory.build().
-            set("storage.backend", "berkeleyje").
-            set("storage.directory", "/home/bob/Desktop/shahram-lab/ebay/data/graph").
-            open();
-
-    g = localGraph.traversal();
+//    JanusGraph localGraph = JanusGraphFactory.build().
+//            set("storage.backend", "berkeleyje").
+//            set("storage.directory", "/home/bob/Desktop/shahram-lab/ebay/data/graph").
+//            open();
+//
+//    g = localGraph.traversal();
   }
 
   public LinkStoreJanusGraph(Properties props) throws IOException, Exception {
@@ -143,7 +148,8 @@ public class LinkStoreJanusGraph extends GraphStore {
                          int threadId) throws IOException, Exception {
     // connect
     try {
-
+      debuglevel = ConfigUtil.getDebugLevel(props);
+      phase = currentPhase;
       graphConfigFilename = ConfigUtil.getPropertyRequired(props, CONFIG_FILENAME);
       openConnection();
     } catch (Exception e) {
@@ -153,7 +159,20 @@ public class LinkStoreJanusGraph extends GraphStore {
   }
 
   private void openConnection() throws Exception {
-    g = traversal().withRemote(graphConfigFilename);
+    // g = traversal().withRemote(graphConfigFilename);
+    MessageSerializer ms = new GraphBinaryMessageSerializerV1();
+    Map<String, Object> config = new HashMap<>();
+    List<String> ioRegistry = new ArrayList<>();
+    ioRegistry.add("org.janusgraph.graphdb.tinkerpop.JanusGraphIoRegistry");
+    config.put("ioRegistries", ioRegistry);
+    ms.configure(config, null);
+    Cluster cluster = Cluster.build()
+        .addContactPoint("localhost")
+        .port(8182)
+        .serializer(ms)
+        .create();
+//    g = traversal().withRemote(DriverRemoteConnection.using("localhost", 8182, "g"));
+    g = traversal().withRemote(DriverRemoteConnection.using(cluster));
   }
 
   @Override
@@ -193,15 +212,17 @@ public class LinkStoreJanusGraph extends GraphStore {
 
   private boolean addLinkImpl(Link l, boolean noinverse) throws Exception {
 //    if (Level.DEBUG.isGreaterOrEqual(debuglevel)) {
-//      logger.debug("addLink " + l.id1 +
-//              "." + l.id2 +
-//              "." + l.link_type);
+//
 //    }
+    logger.debug("addLink " + l.id1 +
+        "." + l.id2 +
+        "." + l.link_type);
 
     int numOfExistingLinks = addLinksInGraph(Collections.singletonList(l));
 //    if (Level.TRACE.isGreaterOrEqual(debuglevel)) {
-//      logger.trace("add/update link: " + l.toString());
+//
 //    }
+    logger.trace("add/update link: " + l.toString());
 
     return numOfExistingLinks == 1;
   }
@@ -222,10 +243,11 @@ public class LinkStoreJanusGraph extends GraphStore {
   private boolean deleteLinkImpl(String dbid, long id1, long link_type, long id2,
       boolean noinverse, boolean expunge) throws Exception {
 //    if (Level.DEBUG.isGreaterOrEqual(debuglevel)) {
-//      logger.debug("deleteLink " + id1 +
-//              "." + id2 +
-//              "." + link_type);
+//
 //    }
+    logger.debug("deleteLink " + id1 +
+        "." + id2 +
+        "." + link_type);
 
     // check if link exists
     GraphTraversal gt = null;
@@ -415,8 +437,9 @@ public class LinkStoreJanusGraph extends GraphStore {
   private void addBulkLinksImpl(String dbid, List<Link> links, boolean noinverse)
           throws Exception {
 //    if (Level.TRACE.isGreaterOrEqual(debuglevel)) {
-//      logger.trace("addBulkLinks: " + links.size() + " links");
+//
 //    }
+    logger.trace("addBulkLinks: " + links.size() + " links");
     addLinksInGraph(links);
   }
 
@@ -462,6 +485,7 @@ public class LinkStoreJanusGraph extends GraphStore {
       try {
         return bulkAddNodesImpl(dbid, nodes);
       } catch (Exception ex) {
+        logger.error(ex);
         throw ex;
       }
     }
@@ -480,19 +504,17 @@ public class LinkStoreJanusGraph extends GraphStore {
   /**
    * Graph Internal Operations: insert nodes in the graph
    */
-  private long[] addNodesInGraph(List<Node> nodes) {
+  private long[] addNodesInGraph(List<Node> nodes) throws Exception{
     GraphTraversal gt = null;
-
     long[] newNodeIDs = new long[nodes.size()];
+    List<GraphTraversal> gtArr = new ArrayList<>();
+    try {
+    logger.info("Number of nodes to add: " + nodes.size());
     for (int i = 0; i<nodes.size(); i++) {
       Node node = nodes.get(i);
 
 
-      if (gt == null) {
-        gt = g.addV(nodeLabel);
-      } else {
-        gt.addV(nodeLabel);
-      }
+      gt = g.addV(nodeLabel);
 
       long nid = getNodeID();
       newNodeIDs[i] = nid;
@@ -502,10 +524,17 @@ public class LinkStoreJanusGraph extends GraphStore {
       gt.property(Node.VERSION, node.version);
       gt.property(Node.TIME, node.time);
       gt.property(Node.DATA, graphValueConverter(node.data));
+
+      gtArr.add(gt);
     }
 
-    gt.next();
+    for (int i = 0; i<gtArr.size(); i++) {
+      gtArr.get(i).next();
+    }
     g.tx().commit();
+    } catch (Exception e) {
+      throw e;
+    }
     return newNodeIDs;
   }
 
@@ -640,7 +669,8 @@ public class LinkStoreJanusGraph extends GraphStore {
     ArrayList<Long> nodeTime = (ArrayList<Long>) nodeValMap.get(Node.TIME);
     ArrayList<String> nodeData = (ArrayList<String>) nodeValMap.get(Node.DATA);
 
-    Node node = new Node(id, nodeType.get(0), nodeVersion.get(0), nodeTime.get(0), nodeData.get(0).getBytes());
+    Node node = new Node(id, nodeType.get(0), nodeVersion.get(0), nodeTime.get(0),
+        nodeData.get(0).getBytes());
     return node;
   }
 
@@ -715,6 +745,8 @@ public class LinkStoreJanusGraph extends GraphStore {
       gt.next();
     }
     g.tx().commit();
+
+    logger.info("Number of Link Updates: " + numOfExistingLink + ", Number of Link Created: " + (links.size() - numOfExistingLink));
 
     return numOfExistingLink;
   }

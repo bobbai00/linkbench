@@ -23,6 +23,9 @@ public class LinkStoreJanusGraphRunnable {
 
         List<Node> nodeList = new ArrayList<>();
 
+//        for (int i = 0; i<5; i++) {
+//            nodeList.add(new Node(i, i, 1, System.currentTimeMillis(), data.getBytes()));
+//        }
         nodeList.add(new Node(1, 1, 1, System.currentTimeMillis(), data.getBytes()));
         nodeList.add(new Node(2, 2, 1, System.currentTimeMillis(), data.getBytes()));
         nodeList.add(new Node(3, 3, 1, System.currentTimeMillis(), data.getBytes()));
@@ -102,7 +105,7 @@ public class LinkStoreJanusGraphRunnable {
         GraphStore graphStore = null;
         try {
             graphStore = new LinkStoreJanusGraph(props);
-            testLinks(graphStore);
+            testAddNodes(graphStore);
             graphStore.close();
 
         } catch (Exception e) {
