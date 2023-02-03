@@ -41,6 +41,7 @@ public class LinkStoreJanusGraph extends GraphStore {
 
   GraphTraversalSource g;
 
+  Cluster cluster;
 
   Level debuglevel;
 
@@ -166,7 +167,7 @@ public class LinkStoreJanusGraph extends GraphStore {
     ioRegistry.add("org.janusgraph.graphdb.tinkerpop.JanusGraphIoRegistry");
     config.put("ioRegistries", ioRegistry);
     ms.configure(config, null);
-    Cluster cluster = Cluster.build()
+    cluster = Cluster.build()
         .addContactPoint("localhost")
         .port(8182)
         .serializer(ms)
@@ -178,6 +179,7 @@ public class LinkStoreJanusGraph extends GraphStore {
   @Override
   public void close() {
     try {
+      cluster.close();
       g.close();
     } catch (Exception e) {
       logger.error("Error while closing JanusGraph connection: ", e);
