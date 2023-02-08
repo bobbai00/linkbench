@@ -101,6 +101,8 @@ public class LinkStoreJanusGraphRunnable {
     public static void main(String[] args) throws Exception {
         Properties props = new Properties();
         props.setProperty("graphConfigFilename", "config/remote-graph.properties");
+        props.setProperty("hostname", "128.110.96.26");
+        props.setProperty("port", "8182");
 
         GraphStore graphStore = null;
         try {

@@ -15,6 +15,7 @@ import org.apache.tinkerpop.gremlin.driver.MessageSerializer;
 import org.apache.tinkerpop.gremlin.driver.remote.DriverRemoteConnection;
 import org.apache.tinkerpop.gremlin.driver.ser.GraphBinaryMessageSerializerV1;
 import org.apache.tinkerpop.gremlin.driver.ser.Serializers;
+import org.apache.tinkerpop.gremlin.structure.Graph;
 import org.janusgraph.graphdb.relations.RelationIdentifier;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
@@ -31,6 +32,8 @@ import static org.apache.tinkerpop.gremlin.process.traversal.Order.desc;
 public class LinkStoreJanusGraph extends GraphStore {
 
   public static final String CONFIG_FILENAME = "graphConfigFilename";
+  public static final String CONFIG_HOSTNAME = "hostname";
+  public static final String CONFIG_PORT = "port";
 
   public static final int DEFAULT_BULKINSERT_SIZE = 1024;
 
@@ -38,6 +41,8 @@ public class LinkStoreJanusGraph extends GraphStore {
   String linkLabel = "link";
 
   String graphConfigFilename;
+  String remoteHostname;
+  String remotePort;
 
   GraphTraversalSource g;
 
@@ -152,6 +157,9 @@ public class LinkStoreJanusGraph extends GraphStore {
       debuglevel = ConfigUtil.getDebugLevel(props);
       phase = currentPhase;
       graphConfigFilename = ConfigUtil.getPropertyRequired(props, CONFIG_FILENAME);
+      remoteHostname = ConfigUtil.getPropertyRequired(props, CONFIG_HOSTNAME);
+      remotePort = ConfigUtil.getPropertyRequired(props, CONFIG_PORT);
+
       openConnection();
     } catch (Exception e) {
       logger.error("error connecting to JanusGraph:", e);
@@ -161,6 +169,7 @@ public class LinkStoreJanusGraph extends GraphStore {
 
   private void openConnection() throws Exception {
     // g = traversal().withRemote(graphConfigFilename);
+
     MessageSerializer ms = new GraphBinaryMessageSerializerV1();
     Map<String, Object> config = new HashMap<>();
     List<String> ioRegistry = new ArrayList<>();
@@ -168,12 +177,12 @@ public class LinkStoreJanusGraph extends GraphStore {
     config.put("ioRegistries", ioRegistry);
     ms.configure(config, null);
     cluster = Cluster.build()
-        .addContactPoint("localhost")
-        .port(8182)
+        .addContactPoint(remoteHostname)
+        .port(Integer.parseInt(remotePort))
         .serializer(ms)
         .create();
 //    g = traversal().withRemote(DriverRemoteConnection.using("localhost", 8182, "g"));
-    g = traversal().withRemote(DriverRemoteConnection.using(cluster));
+    g = traversal().withRemote(DriverRemoteConnection.using(cluster, "g"));
   }
 
   @Override
@@ -277,7 +286,7 @@ public class LinkStoreJanusGraph extends GraphStore {
           // delete the edge
           gt.drop().iterate();
         }
-        g.tx().commit();
+//        g.tx().commit();
       }
     }
     return found;
@@ -533,7 +542,7 @@ public class LinkStoreJanusGraph extends GraphStore {
     for (int i = 0; i<gtArr.size(); i++) {
       gtArr.get(i).next();
     }
-    g.tx().commit();
+//    g.tx().commit();
     } catch (Exception e) {
       throw e;
     }
@@ -628,7 +637,7 @@ public class LinkStoreJanusGraph extends GraphStore {
     }
 
     g.V(graphNodeID).drop().iterate();
-    g.tx().commit();
+//    g.tx().commit();
     return true;
   }
 
@@ -649,7 +658,7 @@ public class LinkStoreJanusGraph extends GraphStore {
     gt.property(Node.DATA, graphValueConverter(newNode.data));
 
     gt.next();
-    g.tx().commit();
+//    g.tx().commit();
     return true;
   }
 
@@ -681,7 +690,7 @@ public class LinkStoreJanusGraph extends GraphStore {
    */
   private void dropAllNodes() {
     g.V().drop().iterate();
-    g.tx().commit();
+//    g.tx().commit();
   }
 
   /**
@@ -746,7 +755,7 @@ public class LinkStoreJanusGraph extends GraphStore {
     for (GraphTraversal gt : gtArr) {
       gt.next();
     }
-    g.tx().commit();
+//    g.tx().commit();
 
     logger.info("Number of Link Updates: " + numOfExistingLink + ", Number of Link Created: " + (links.size() - numOfExistingLink));
 
