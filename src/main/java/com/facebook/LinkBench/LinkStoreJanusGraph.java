@@ -14,6 +14,7 @@ import org.apache.tinkerpop.gremlin.driver.Cluster;
 import org.apache.tinkerpop.gremlin.driver.MessageSerializer;
 import org.apache.tinkerpop.gremlin.driver.remote.DriverRemoteConnection;
 import org.apache.tinkerpop.gremlin.driver.ser.GraphBinaryMessageSerializerV1;
+import org.apache.tinkerpop.gremlin.driver.ser.GraphSONMessageSerializerV3d0;
 import org.apache.tinkerpop.gremlin.driver.ser.Serializers;
 import org.apache.tinkerpop.gremlin.structure.Graph;
 import org.janusgraph.graphdb.relations.RelationIdentifier;
@@ -170,7 +171,7 @@ public class LinkStoreJanusGraph extends GraphStore {
   private void openConnection() throws Exception {
     // g = traversal().withRemote(graphConfigFilename);
 
-    MessageSerializer ms = new GraphBinaryMessageSerializerV1();
+    MessageSerializer ms = new GraphSONMessageSerializerV3d0();
     Map<String, Object> config = new HashMap<>();
     List<String> ioRegistry = new ArrayList<>();
     ioRegistry.add("org.janusgraph.graphdb.tinkerpop.JanusGraphIoRegistry");
